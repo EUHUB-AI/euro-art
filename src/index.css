@@ -1,0 +1,60 @@
+@import "tailwindcss";
+
+/* Allow manual dark mode toggle using .dark class on html */
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --color-primary: #1e3a8a; /* blue-900 */
+  --color-secondary: #fefce8; /* yellow-50 */
+  --color-accent: #facc15; /* yellow-400 */
+}
+
+@layer base {
+  body {
+    @apply bg-white text-gray-900 antialiased dark:bg-gray-900 dark:text-gray-100 transition-colors duration-300;
+  }
+}
+
+/* Custom micro-animations and utilities that Tailwind v4 will parse */
+@layer utilities {
+  .card-hover {
+    @apply transition-all duration-300 ease-in-out hover:-translate-y-1 hover:shadow-xl dark:hover:shadow-blue-900/20;
+  }
+  .image-zoom-hover {
+    @apply transition-transform duration-500 ease-out hover:scale-105;
+  }
+  .underline-anim {
+    @apply relative after:absolute after:bottom-0 after:left-0 after:h-[2px] after:w-0 after:bg-yellow-400 after:transition-all after:duration-300 hover:after:w-full;
+  }
+  .gallery-overlay {
+    @apply absolute inset-0 bg-blue-900/0 transition-colors duration-300 hover:bg-blue-900/60 dark:hover:bg-black/60 flex items-center justify-center opacity-0 hover:opacity-100;
+  }
+}
+
+/* Respect prefers-reduced-motion globally */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Disable hover effects on touch devices to avoid sticky hovers */
+@media (hover: none) {
+  .card-hover {
+    @apply hover:translate-y-0 hover:shadow-none dark:hover:shadow-none;
+  }
+  .image-zoom-hover {
+    @apply hover:scale-100;
+  }
+  .underline-anim {
+    @apply hover:after:w-0;
+  }
+  .gallery-overlay {
+    @apply hover:bg-transparent hover:opacity-0;
+  }
+}
