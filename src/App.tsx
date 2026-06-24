@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import Logo from './Logo';
 
 /* EUROART — "Studio" (verzia-2): dark cinematic, brand blue + yellow.
    Ported faithfully from the Claude Design source. Styling lives in index.css;
@@ -154,9 +155,8 @@ function App() {
     <>
       <header className={`nav${scrolled ? ' scrolled' : ''}`}>
         <div className="wrap nav-row">
-          <a href="#top" className="logo">
-            <span>EURO</span>
-            <span className="a">ART</span>
+          <a href="#top" className="logo" aria-label="EUROART — domov">
+            <Logo />
           </a>
           <nav className="menu">
             <a href="#about">O nás</a>
@@ -564,9 +564,8 @@ function App() {
 
       <footer data-screen-label="Footer">
         <div className="wrap">
-          <a href="#top" className="logo" style={{ fontSize: '28px' }}>
-            <span>EURO</span>
-            <span className="a">ART</span>
+          <a href="#top" className="logo logo-lg" aria-label="EUROART — domov">
+            <Logo />
           </a>
           <p>Reklamná agentúra &amp; účtovníctvo · originálne riešenia od roku 1997</p>
           <div className="fne">© {year} EUROART. Všetky práva vyhradené. · Návrh dizajnu — verzia „Studio“</div>

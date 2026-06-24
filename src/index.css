@@ -43,8 +43,9 @@ header.nav.scrolled{background:var(--nav-bg);backdrop-filter:blur(16px);box-shad
 /* At the top the nav sits over the dark hero — keep it light in both themes. */
 header.nav:not(.scrolled){--ts:#fff;--muted:#c9cfdb}
 .nav-row{display:flex;align-items:center;justify-content:space-between;gap:24px}
-.logo{display:inline-flex;align-items:center;font-family:var(--sans);font-weight:800;font-size:22px;letter-spacing:.01em;color:var(--ts)}
-.logo .a{background:var(--yel);color:#15171c;padding:2px 9px;border-radius:7px;margin-left:5px}
+.logo{display:inline-flex;align-items:center;color:var(--ts);transition:color .3s}
+.logo svg{height:34px;width:auto;display:block}
+.logo.logo-lg svg{height:48px}
 .menu{display:flex;gap:32px;align-items:center}
 .menu a{font-weight:600;font-size:13.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);transition:.25s}
 .menu a:hover{color:var(--ts)}
