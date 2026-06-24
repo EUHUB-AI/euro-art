@@ -40,6 +40,8 @@ h1,h2,h3{font-family:var(--disp);font-weight:600;line-height:1.05;letter-spacing
 /* nav */
 header.nav{position:fixed;top:0;left:0;right:0;z-index:80;padding:24px 0;transition:.4s}
 header.nav.scrolled{background:var(--nav-bg);backdrop-filter:blur(16px);box-shadow:0 1px 0 var(--line);padding:14px 0}
+/* At the top the nav sits over the dark hero — keep it light in both themes. */
+header.nav:not(.scrolled){--ts:#fff;--muted:#c9cfdb}
 .nav-row{display:flex;align-items:center;justify-content:space-between;gap:24px}
 .logo{display:inline-flex;align-items:center;font-family:var(--sans);font-weight:800;font-size:22px;letter-spacing:.01em;color:var(--ts)}
 .logo .a{background:var(--yel);color:#15171c;padding:2px 9px;border-radius:7px;margin-left:5px}
@@ -70,14 +72,15 @@ section{position:relative}
 .sec-head .sub{font-family:var(--disp);font-weight:400;font-size:22px;color:var(--blue-2);margin-top:12px}
 .lede{font-size:21px;color:var(--muted);max-width:60ch}
 
-/* HERO */
-.hero{min-height:100vh;display:flex;align-items:flex-end;position:relative;overflow:hidden;padding-bottom:96px}
+/* HERO — always a dark cinematic scene, in both themes, so its light text
+   stays readable (the cubes image is dark and .wrap forces white text). */
+.hero{min-height:100vh;display:flex;align-items:flex-end;position:relative;overflow:hidden;padding-bottom:96px;background:#13151A;--text:#ECEEF3;--muted:#c9cfdb;--ts:#fff;--blue-2:#6F97FF;--yel:#FFC62B}
 .hero-bg{position:absolute;inset:0;z-index:0}
 .hero-bg img{width:100%;height:100%;object-fit:cover;opacity:.55}
 .hero-bg::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(19,21,26,.55) 0%,rgba(19,21,26,.2) 38%,rgba(19,21,26,.92) 88%,#13151A 100%)}
 #net{position:absolute;inset:0;z-index:1}
 .hero .wrap{position:relative;z-index:3;width:100%;--text:#ECEEF3;--muted:#c9cfdb;--ts:#fff}
-.hero h1{font-size:clamp(42px,6.6vw,104px);font-weight:600;max-width:16ch}
+.hero h1{font-size:clamp(42px,6.6vw,104px);font-weight:600;max-width:16ch;color:var(--text)}
 .hero h1 .em{display:block;color:transparent;background:linear-gradient(100deg,var(--blue-2),var(--yel));-webkit-background-clip:text;background-clip:text}
 .hero .lede{margin:26px 0 36px}
 .since{display:inline-flex;align-items:center;gap:13px;font-weight:700;letter-spacing:.2em;text-transform:uppercase;font-size:12px;color:var(--yel);margin-bottom:24px}
