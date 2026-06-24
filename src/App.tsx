@@ -1,440 +1,578 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
-// Icons
-const CheckIcon = () => (
-  <svg className="w-5 h-5 text-yellow-500 mr-2 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path></svg>
-);
+/* EUROART — "Studio" (verzia-2): dark cinematic, brand blue + yellow.
+   Ported faithfully from the Claude Design source. Styling lives in index.css;
+   the vanilla-JS interactions (theme, scroll reveal, parallax, magnetic cube,
+   particle network) are reimplemented as React effects below. */
 
-const SunIcon = () => (
-  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>
-);
-
-const MoonIcon = () => (
-  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"></path></svg>
-);
-
-const SectionHeading = ({ title, subtitle }: { title: string, subtitle?: string }) => (
-  <div className="mb-12 text-center">
-    <h2 className="text-3xl md:text-4xl font-bold text-blue-900 dark:text-blue-400 mb-4 transition-colors">{title}</h2>
-    {subtitle && <p className="text-xl text-yellow-600 dark:text-yellow-400 font-medium italic transition-colors">"{subtitle}"</p>}
-    <div className="w-24 h-1 bg-yellow-400 mx-auto mt-6 rounded-full"></div>
-  </div>
-);
+type Particle = { x: number; y: number; vx: number; vy: number };
 
 function App() {
-  const [isScrolled, setIsScrolled] = useState(false);
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [darkMode, setDarkMode] = useState(false);
-
-  // Initialize dark mode based on user preference
-  useEffect(() => {
-    if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
-      setDarkMode(true);
-      document.documentElement.classList.add('dark');
+  const [light, setLight] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('ea-theme') === 'light';
+    } catch {
+      return false;
     }
-  }, []);
+  });
+  const [scrolled, setScrolled] = useState(false);
 
-  const toggleDarkMode = () => {
-    setDarkMode(!darkMode);
-    if (!darkMode) {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
-  };
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const cubeRef = useRef<HTMLDivElement>(null);
 
+  // Theme: reflect state onto <body>; the index.html inline script handles the
+  // initial paint so there is no flash on first load.
   useEffect(() => {
-    const handleScroll = () => {
-      setIsScrolled(window.scrollY > 20);
+    document.body.classList.toggle('light', light);
+  }, [light]);
+
+  const toggleTheme = () =>
+    setLight((v) => {
+      const next = !v;
+      try {
+        localStorage.setItem('ea-theme', next ? 'light' : 'dark');
+      } catch {
+        /* ignore storage failures (private mode, etc.) */
+      }
+      return next;
+    });
+
+  // Nav state + scroll reveal + parallax.
+  useEffect(() => {
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const reveal = () => {
+      document.querySelectorAll<HTMLElement>('.rv:not(.in)').forEach((el) => {
+        if (el.getBoundingClientRect().top < window.innerHeight * 0.9) el.classList.add('in');
+      });
     };
-    window.addEventListener('scroll', handleScroll);
-    return () => window.removeEventListener('scroll', handleScroll);
+    const onScroll = () => {
+      setScrolled(window.scrollY > 40);
+      // Skip the parallax motion for users who prefer reduced motion.
+      if (!reduceMotion.matches) {
+        document.querySelectorAll<HTMLElement>('[data-parallax]').forEach((el) => {
+          const r = el.getBoundingClientRect();
+          const c = (r.top + r.height / 2 - window.innerHeight / 2) / window.innerHeight;
+          el.style.transform = `translateY(${c * -parseFloat(el.dataset.parallax || '0') * 54}px)`;
+        });
+      }
+      reveal();
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    onScroll();
+    reveal();
+    return () => window.removeEventListener('scroll', onScroll);
   }, []);
 
-  const navLinks = [
-    { name: 'O Nás', href: '#o-nas' },
-    { name: 'Služby', href: '#sluzby' },
-    { name: 'Naša Ponuka', href: '#ponuka' },
-    { name: 'Účtovníctvo', href: '#uctovnictvo' },
-    { name: 'Kontakt', href: '#kontakt' },
-  ];
+  // Magnetic / tilt brand cube.
+  useEffect(() => {
+    const cube = cubeRef.current;
+    if (!cube) return;
+    const onMove = (e: MouseEvent) => {
+      const x = e.clientX / window.innerWidth - 0.5;
+      const y = e.clientY / window.innerHeight - 0.5;
+      cube.style.transform = `rotateX(${-18 - y * 26}deg) rotateY(${x * 60}deg)`;
+    };
+    window.addEventListener('mousemove', onMove, { passive: true });
+    return () => window.removeEventListener('mousemove', onMove);
+  }, []);
+
+  // Particle network over the hero.
+  useEffect(() => {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const cv = canvasRef.current;
+    const ctx = cv?.getContext('2d');
+    if (!cv || !ctx) return;
+
+    let w = 0;
+    let h = 0;
+    let pts: Particle[] = [];
+    let raf = 0;
+
+    const resize = () => {
+      const parent = cv.parentElement;
+      if (!parent) return;
+      w = cv.width = parent.clientWidth;
+      h = cv.height = parent.clientHeight;
+      const n = Math.min(70, Math.round((w * h) / 22000));
+      pts = [];
+      for (let i = 0; i < n; i++) {
+        pts.push({
+          x: Math.random() * w,
+          y: Math.random() * h,
+          vx: (Math.random() - 0.5) * 0.35,
+          vy: (Math.random() - 0.5) * 0.35,
+        });
+      }
+    };
+
+    const draw = () => {
+      ctx.clearRect(0, 0, w, h);
+      for (const p of pts) {
+        p.x += p.vx;
+        p.y += p.vy;
+        if (p.x < 0 || p.x > w) p.vx *= -1;
+        if (p.y < 0 || p.y > h) p.vy *= -1;
+      }
+      for (let i = 0; i < pts.length; i++) {
+        for (let j = i + 1; j < pts.length; j++) {
+          const a = pts[i];
+          const b = pts[j];
+          const dx = a.x - b.x;
+          const dy = a.y - b.y;
+          const d = Math.hypot(dx, dy);
+          if (d < 140) {
+            ctx.strokeStyle = `rgba(140,170,255,${0.16 * (1 - d / 140)})`;
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(a.x, a.y);
+            ctx.lineTo(b.x, b.y);
+            ctx.stroke();
+          }
+        }
+      }
+      for (const p of pts) {
+        ctx.fillStyle = 'rgba(255,210,90,.55)';
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 1.7, 0, 7);
+        ctx.fill();
+      }
+      raf = requestAnimationFrame(draw);
+    };
+
+    resize();
+    draw();
+    window.addEventListener('resize', resize);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener('resize', resize);
+    };
+  }, []);
+
+  const year = new Date().getFullYear();
 
   return (
-    <div className="min-h-screen font-sans">
-      {/* Navigation */}
-      <nav className={`fixed w-full z-50 transition-all duration-300 ${isScrolled ? 'bg-white dark:bg-gray-900 shadow-md py-4' : 'bg-transparent py-6'}`}>
-        <div className="container mx-auto px-4 md:px-6 flex justify-between items-center">
-          <a href="#" className="flex items-center dark:bg-white/90 dark:p-1.5 dark:rounded-lg transition-colors">
-            <img src="/images/logo/logo.svg" alt="Euro-Art Logo" className="h-10 w-auto" />
+    <>
+      <header className={`nav${scrolled ? ' scrolled' : ''}`}>
+        <div className="wrap nav-row">
+          <a href="#top" className="logo">
+            <span>EURO</span>
+            <span className="a">ART</span>
           </a>
-          
-          <div className="flex items-center gap-6">
-            {/* Desktop Nav */}
-            <div className="hidden md:flex space-x-8">
-              {navLinks.map((link) => (
-                <a 
-                  key={link.name} 
-                  href={link.href}
-                  className={`font-semibold text-sm uppercase tracking-wider transition-colors ${isScrolled ? 'text-blue-900 dark:text-gray-300 hover:text-yellow-500 dark:hover:text-yellow-400' : 'text-white/90 hover:text-yellow-400'} underline-anim`}
-                >
-                  {link.name}
-                </a>
-              ))}
-            </div>
-
-            {/* Dark Mode Toggle */}
-            <button 
-              onClick={toggleDarkMode}
-              className={`p-2 rounded-full transition-colors ${isScrolled ? 'bg-blue-50 dark:bg-gray-800 text-blue-900 dark:text-yellow-400' : 'bg-white/10 hover:bg-white/20 text-white'}`}
-              aria-label="Toggle Dark Mode"
+          <nav className="menu">
+            <a href="#about">O nás</a>
+            <a href="#services">Služby</a>
+            <a href="#offer">Naša ponuka</a>
+            <a href="#accounting">Účtovníctvo</a>
+            <a href="#contact">Kontakt</a>
+          </nav>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+            <button
+              className="theme-tog"
+              onClick={toggleTheme}
+              aria-label="Prepnúť svetlý a tmavý režim"
+              title="Svetlý / tmavý režim"
             >
-              {darkMode ? <SunIcon /> : <MoonIcon />}
-            </button>
-
-            {/* Mobile Menu Button */}
-            <button 
-              className={`md:hidden focus:outline-none transition-colors ${isScrolled ? 'text-blue-900 dark:text-white' : 'text-white'}`}
-              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              aria-label="Toggle menu"
-            >
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                {mobileMenuOpen ? (
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
-                ) : (
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16"></path>
-                )}
+              <svg className="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                <path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z" />
+              </svg>
+              <svg className="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                <circle cx="12" cy="12" r="4.2" />
+                <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
               </svg>
             </button>
+            <a href="#contact" className="nav-cta">
+              Spojte sa s nami
+            </a>
           </div>
-        </div>
-
-        {/* Mobile Nav */}
-        {mobileMenuOpen && (
-          <div className="md:hidden absolute top-full left-0 w-full bg-white dark:bg-gray-900 shadow-lg py-4 px-4 flex flex-col space-y-4 transition-colors">
-            {navLinks.map((link) => (
-              <a 
-                key={link.name} 
-                href={link.href}
-                onClick={() => setMobileMenuOpen(false)}
-                className="font-semibold text-blue-900 dark:text-gray-200 hover:text-yellow-500 dark:hover:text-yellow-400 border-b border-gray-100 dark:border-gray-800 pb-2 transition-colors"
-              >
-                {link.name}
-              </a>
-            ))}
-          </div>
-        )}
-      </nav>
-
-      {/* Hero Section */}
-      <header className="relative h-screen flex items-center justify-center overflow-hidden bg-[#909090] dark:bg-[#707070] transition-colors">
-        <div className="absolute inset-0 z-0 flex items-center justify-center p-4 md:p-12">
-          <img 
-            src="/images/sections/00_intro.png" 
-            alt="Euro-Art Background" 
-            className="w-full h-full object-contain"
-            loading="eager"
-          />
-        </div>
-        
-        {/* Overlays applied to the whole section to create the dark blue effect */}
-        <div className="absolute inset-0 bg-blue-900/70 dark:bg-gray-900/80 mix-blend-multiply transition-colors pointer-events-none"></div>
-        <div className="absolute inset-0 bg-black/30 dark:bg-black/50 transition-colors pointer-events-none"></div>
-        
-        <div className="relative z-10 text-center px-4 max-w-4xl mt-12 bg-black/20 p-8 rounded-3xl backdrop-blur-sm border border-white/10">
-          <h1 className="text-4xl md:text-6xl lg:text-7xl font-extrabold text-white mb-6 leading-tight">
-            Vy viete, čo potrebujete,<br/>
-            <span className="text-yellow-400">... my vieme, ako na to!</span>
-          </h1>
-          <p className="text-lg md:text-2xl text-blue-100 dark:text-gray-200 mb-10 max-w-2xl mx-auto transition-colors">
-            Reklamná agentúra EUROART pôsobí v oblasti počítačovej grafiky a vydavateľskej činnosti už od roku 1997.
-          </p>
-          <a href="#sluzby" className="inline-block bg-yellow-400 hover:bg-yellow-500 text-blue-900 font-bold py-4 px-8 rounded-full transition-colors shadow-lg">
-            Objavte naše služby
-          </a>
         </div>
       </header>
 
-      {/* O NÁS Section */}
-      <section id="o-nas" className="py-24 bg-white dark:bg-gray-900 transition-colors">
-        <div className="container mx-auto px-4 md:px-6">
-          <div className="flex flex-col lg:flex-row items-center gap-12">
-            <div className="lg:w-1/2">
-              <div className="overflow-hidden rounded-2xl shadow-xl border-4 border-yellow-400/20 dark:border-yellow-400/10">
-                <img 
-                  src="/images/sections/01_about_us.png" 
-                  alt="O nás" 
-                  className="w-full h-auto image-zoom-hover"
-                  loading="lazy"
+      <main id="top">
+        {/* HERO */}
+        <section className="hero" data-screen-label="Hero">
+          <div className="hero-bg">
+            <img src="/images/cubes-wide-web.jpg" alt="3D kocky — kreatívne pozadie" />
+          </div>
+          <canvas id="net" ref={canvasRef}></canvas>
+          <div className="cube-stage">
+            <div className="cube" ref={cubeRef}>
+              <div className="cf-front">EUROART</div>
+              <div className="cf-right"></div>
+              <div className="cf-top"></div>
+              <div className="cf-back"></div>
+              <div className="cf-left"></div>
+              <div className="cf-bottom"></div>
+            </div>
+          </div>
+          <div className="wrap">
+            <div className="since rv">Reklamná agentúra &amp; vydavateľstvo · od 1997</div>
+            <h1 className="rv d1">
+              Vy viete, čo potrebujete,<span className="em">… my vieme, ako na to!</span>
+            </h1>
+            <p className="lede rv d2">
+              Počítačová grafika a vydavateľská činnosť už od roku 1997. Vyčnievame z radu — rovnako ako jediná
+              farebná kocka medzi tisíckami sivých.
+            </p>
+            <div className="rv d3" style={{ display: 'flex', gap: '15px', flexWrap: 'wrap' }}>
+              <a href="#services" className="btn btn-primary">
+                Objavte naše služby <span className="arr">→</span>
+              </a>
+              <a href="#offer" className="btn btn-ghost">
+                Čo vytlačíme
+              </a>
+            </div>
+          </div>
+          <div className="scroll-hint">
+            <span className="ln"></span>Scrollujte
+          </div>
+        </section>
+
+        {/* O NÁS */}
+        <section className="pad" id="about" data-screen-label="O nás">
+          <div className="wrap about-grid">
+            <div className="about rv">
+              <div className="eyebrow">O nás</div>
+              <h2 style={{ fontSize: 'clamp(32px,3.8vw,52px)', margin: '14px 0 0' }}>
+                Skúsenosti
+                <br />
+                od roku 1997
+              </h2>
+              <p className="quiet" style={{ marginTop: '24px' }}>
+                Zameriavame sa najmä na spoluprácu s obcami, mestami, vzdelávacími inštitúciami, občianskymi
+                združeniami a mikroregiónmi.
+              </p>
+              <p className="quiet">
+                Poznáme ich špecifické požiadavky pri tvorbe propagačno-informačných tlačovín. Naším cieľom je „ušiť
+                produkt na mieru“ — vymyslieť ho a navrhnúť dizajn, s ktorým sa stotožní nielen grafik, ale predovšetkým
+                užívateľ.
+              </p>
+              <div className="callout">
+                Potrebujete navrhnúť a vytlačiť leták, skladačku, kalendár, cyklomapu, brožúru alebo vydať knihu? Ste na
+                správnom mieste.
+              </div>
+              <div className="stat-row">
+                <div className="stat">
+                  <b>{year - 1997}</b>
+                  <span>rokov na trhu</span>
+                </div>
+                <div className="stat">
+                  <b>6+</b>
+                  <span>ocenení poroty</span>
+                </div>
+                <div className="stat">
+                  <b>1997</b>
+                  <span>založenie</span>
+                </div>
+              </div>
+            </div>
+            <div className="rv d1">
+              <div className="bleed fade" data-parallax="0.1">
+                <img
+                  src="/images/brain-web.jpg"
+                  alt="Ruka s kresbou mozgu a sieťou — kreativita"
+                  style={{ aspectRatio: '3/2' }}
                 />
               </div>
             </div>
-            <div className="lg:w-1/2">
-              <h2 className="text-sm font-bold text-yellow-600 dark:text-yellow-400 uppercase tracking-widest mb-2 transition-colors">O NÁS</h2>
-              <h3 className="text-3xl md:text-4xl font-bold text-blue-900 dark:text-blue-400 mb-6 transition-colors">Skúsenosti od roku 1997</h3>
-              <p className="text-gray-600 dark:text-gray-400 mb-6 leading-relaxed text-lg transition-colors">
-                Zameriavame sa najmä na spoluprácu s obcami, mestami, vzdelávacími inštitúciami, občianskymi združeniami a mikroregiónmi.
-              </p>
-              <p className="text-gray-600 dark:text-gray-400 mb-6 leading-relaxed transition-colors">
-                Poznáme ich špecifické požiadavky pri tvorbe propagačno-informačných tlačovín a publikácií, ktoré majú „zasiahnuť“ predovšetkým obyvateľa a návštevníka obce – mesta - regiónu. Napĺňanie tohto cieľa si vyžaduje poznať jeho očakávania a „ušiť mu produkt na mieru“ - vymyslieť produkt, jeho formu, navrhnúť dizajn, s ktorým sa stotožní nielen grafik, ale predovšetkým užívateľ. Náš produkt, ktorý prinesie tie najlepšie výsledky Vášmu snaženiu.
-              </p>
-              <div className="bg-yellow-50 dark:bg-gray-800 p-6 rounded-xl border-l-4 border-yellow-400 transition-colors">
-                <p className="font-semibold text-blue-900 dark:text-gray-200 transition-colors">
-                  Potrebujete graficky navrhnúť a vytlačiť propagačný leták či skladačku, kalendár, cyklomapu, informačnú brožúru alebo vydať knihu? Potom ste na správnom mieste.
+          </div>
+        </section>
+
+        {/* SLUŽBY */}
+        <section className="pad svc-band" id="services" data-screen-label="Služby">
+          <div className="wrap">
+            <div className="sec-head center rv">
+              <div className="eyebrow">Služby</div>
+              <h2>Komplexné služby</h2>
+              <div className="sub">„… originálne riešenia!“</div>
+            </div>
+            <div className="svc-grid">
+              <div className="svc rv" data-n="01">
+                <div className="ico">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7">
+                    <path d="M12 19l7-7 3 3-7 7-3-3z" />
+                    <path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z" />
+                    <circle cx="11" cy="11" r="2" />
+                  </svg>
+                </div>
+                <h3>Grafický dizajn</h3>
+                <p>
+                  Pretavenie predstáv klienta do návrhu. Štylizácia textov, výber formátu, práca na kalibrovaných
+                  monitoroch EIZO.
+                </p>
+              </div>
+              <div className="svc rv d1" data-n="02">
+                <div className="ico">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7">
+                    <path d="M4 19.5A2.5 2.5 0 016.5 17H20" />
+                    <path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z" />
+                    <path d="M9 7h7M9 11h7" />
+                  </svg>
+                </div>
+                <h3>Redakčné práce</h3>
+                <p>Príprava textového obsahu, štylizácia, jazyková korektúra či preklad do iného jazyka.</p>
+              </div>
+              <div className="svc rv d2" data-n="03">
+                <div className="ico">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7">
+                    <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z" />
+                    <circle cx="12" cy="13" r="4" />
+                  </svg>
+                </div>
+                <h3>Fotografia</h3>
+                <p>Profesionálne fotenie interiérov a exteriérov. Canon EOS, 22 Mpx, až do formátu A2+.</p>
+              </div>
+              <div className="svc rv d1" data-n="04">
+                <div className="ico">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7">
+                    <rect x="2" y="3" width="20" height="14" rx="2" />
+                    <path d="M8 21h8M12 17v4" />
+                  </svg>
+                </div>
+                <h3>Výroba web-stránok</h3>
+                <p>Web, ktorý vás odlíši od konkurencie — vrátane crossmedia publikovania pre tlač aj internet.</p>
+              </div>
+              <div className="svc rv d2" data-n="05">
+                <div className="ico">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7">
+                    <path d="M20 12v9H4v-9" />
+                    <path d="M2 7h20v5H2zM12 22V7M12 7H7.5a2.5 2.5 0 010-5C11 2 12 7 12 7zM12 7h4.5a2.5 2.5 0 000-5C13 2 12 7 12 7z" />
+                  </svg>
+                </div>
+                <h3>Doplnkové reklamné služby</h3>
+                <p>
+                  Reklamné predmety, textil, potlač, gravírovanie, puzzle, magnetky, bannery, informačné tabule, polep
+                  vozidiel.
+                </p>
+              </div>
+              <div className="svc feat rv d3" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                <h3>Od nápadu po realizáciu.</h3>
+                <p>
+                  Návrh aj profesionálne technické spracovanie pod jednou strechou — od kreatívy až po hotovú tlačovinu.
                 </p>
               </div>
             </div>
           </div>
-        </div>
-      </section>
+        </section>
 
-      {/* SLUŽBY Section */}
-      <section id="sluzby" className="py-24 bg-blue-50/50 dark:bg-gray-800/50 transition-colors">
-        <div className="container mx-auto px-4 md:px-6">
-          <SectionHeading title="Naše Služby" subtitle="Komplexné služby, ... originálne riešenia!" />
-          
-          <div className="mb-16 overflow-hidden rounded-3xl shadow-xl border-2 border-yellow-400/20">
-            <img src="/images/sections/02_services.png" alt="Služby" className="w-full h-64 md:h-96 object-cover image-zoom-hover" loading="lazy" />
+        {/* PONUKA */}
+        <section className="pad" id="offer" data-screen-label="Naša ponuka">
+          <div className="wrap">
+            <div className="offer-top">
+              <div className="rv">
+                <div className="eyebrow">Naša ponuka</div>
+                <h2 style={{ fontSize: 'clamp(30px,3.6vw,50px)', margin: '14px 0 0' }}>
+                  Na trhu je veľa ponúk,
+                  <br />
+                  <span className="grad">šijeme ju na mieru.</span>
+                </h2>
+                <p className="quiet" style={{ marginTop: '24px' }}>
+                  Až profesionálna technická realizácia je zárukou úspešného výsledku. Vyberieme správny formát, papier,
+                  druh tlače aj väzbu.
+                </p>
+                <p className="quiet">
+                  Tvoríme tlačoviny od najjednoduchších po najzložitejšie — s knihárskym spracovaním, laminovaním,
+                  lakovaním či výsekom.
+                </p>
+              </div>
+              <div className="rv d1">
+                <div className="bleed fade" data-parallax="0.1">
+                  <img
+                    src="/images/phone-wide-web.jpg"
+                    alt="Ruka ukazujúca na nákres mobilu — kresba kriedou"
+                    style={{ aspectRatio: '4/3' }}
+                  />
+                </div>
+              </div>
+            </div>
+            <div className="offer-cols">
+              <div className="ocol rv">
+                <h3>
+                  <span className="num">1</span>Firemné tlačoviny
+                </h3>
+                <ul>
+                  <li>Vizitky, hlavičkové papiere, obálky</li>
+                  <li>Manuály a servisné knižky</li>
+                  <li>Poznámkové bloky, diáre</li>
+                  <li>Letáky, plagáty, skladačky</li>
+                  <li>Katalógy, zakladače</li>
+                  <li>Kalendáre, výročné správy</li>
+                </ul>
+              </div>
+              <div className="ocol rv d1">
+                <h3>
+                  <span className="num">2</span>Pre inštitúcie
+                </h3>
+                <ul>
+                  <li>Brožúry</li>
+                  <li>Skriptá</li>
+                  <li>Knihy</li>
+                  <li>Noviny, časopisy</li>
+                  <li>Puzzle</li>
+                </ul>
+              </div>
+              <div className="ocol rv d2">
+                <h3>
+                  <span className="num">3</span>Pre obce a mestá
+                </h3>
+                <ul>
+                  <li>Pohľadnice, skladačky</li>
+                  <li>Turistickí sprievodcovia, mapy</li>
+                  <li>Kalendáre s vašimi fotkami</li>
+                  <li>Monografie</li>
+                  <li>Noviny</li>
+                  <li>Bannery, informačné tabule</li>
+                </ul>
+              </div>
+            </div>
           </div>
+        </section>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {/* Service 1 */}
-            <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-md p-8 card-hover flex flex-col h-full border border-yellow-100 dark:border-gray-700 hover:border-yellow-400 dark:hover:border-yellow-400 transition-colors">
-              <div className="w-16 h-16 bg-blue-100 dark:bg-gray-700 text-blue-700 dark:text-blue-400 rounded-2xl flex items-center justify-center mb-6 shadow-inner transition-colors">
-                <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
-              </div>
-              <h3 className="text-xl font-bold text-blue-900 dark:text-gray-100 mb-4 transition-colors">Grafický dizajn</h3>
-              <p className="text-gray-600 dark:text-gray-400 flex-grow transition-colors">
-                Predstavuje pretavenie predstáv zadávateľa do grafického návrhu. Pomôžeme so štylizáciou textov a výberom formátu. Pracujeme s profesionálnymi grafickými programami na kalibrovaných monitoroch EIZO.
-              </p>
+        {/* OCENENIA */}
+        <section className="pad svc-band" id="awards" data-screen-label="Ocenenia">
+          <div className="wrap">
+            <div className="sec-head rv">
+              <div className="eyebrow">Ocenenia</div>
+              <h2 style={{ fontSize: 'clamp(30px,3.6vw,50px)', marginTop: '12px' }}>Naša práca, ocenená porotami</h2>
             </div>
-
-            {/* Service 2 */}
-            <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-md p-8 card-hover flex flex-col h-full border border-yellow-100 dark:border-gray-700 hover:border-yellow-400 dark:hover:border-yellow-400 transition-colors">
-              <div className="w-16 h-16 bg-blue-100 dark:bg-gray-700 text-blue-700 dark:text-blue-400 rounded-2xl flex items-center justify-center mb-6 shadow-inner transition-colors">
-                <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
+            <div className="awards">
+              <div className="award rv">
+                <div className="yr">Slovenská kronika</div>
+                <div className="ttl">
+                  Monografia Žemberovce<span>Kategória monografia</span>
+                </div>
+                <div className="medal">Hlavná cena</div>
               </div>
-              <h3 className="text-xl font-bold text-blue-900 dark:text-gray-100 mb-4 transition-colors">Redakčné práce</h3>
-              <p className="text-gray-600 dark:text-gray-400 flex-grow transition-colors">
-                Pomôžeme Vám s prípravou textového obsahu, štylizáciou, jazykovou korektúrou či prekladom do iného jazyka.
-              </p>
-            </div>
-
-            {/* Service 3 */}
-            <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-md p-8 card-hover flex flex-col h-full border border-yellow-100 dark:border-gray-700 hover:border-yellow-400 dark:hover:border-yellow-400 transition-colors">
-              <div className="w-16 h-16 bg-blue-100 dark:bg-gray-700 text-blue-700 dark:text-blue-400 rounded-2xl flex items-center justify-center mb-6 shadow-inner transition-colors">
-                <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"></path><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+              <div className="award rv">
+                <div className="yr">Najkrajšia kniha</div>
+                <div className="ttl">
+                  Chotár pod Čiernym Kameňom<span>Nominácia na Krištáľové krídlo</span>
+                </div>
+                <div className="medal">1. miesto</div>
               </div>
-              <h3 className="text-xl font-bold text-blue-900 dark:text-gray-100 mb-4 transition-colors">Fotografia</h3>
-              <p className="text-gray-600 dark:text-gray-400 flex-grow transition-colors">
-                Profesionálne nafotíme interiéry a exteriéry pre potreby Vašich materiálov. Fotíme profesionálnym fotoaparátom Canon EOS (22 Mpx).
-              </p>
-            </div>
-
-            {/* Service 4 */}
-            <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-md p-8 card-hover flex flex-col h-full border border-yellow-100 dark:border-gray-700 hover:border-yellow-400 dark:hover:border-yellow-400 transition-colors">
-              <div className="w-16 h-16 bg-blue-100 dark:bg-gray-700 text-blue-700 dark:text-blue-400 rounded-2xl flex items-center justify-center mb-6 shadow-inner transition-colors">
-                <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
+              <div className="award rv">
+                <div className="yr">Slovenská kronika</div>
+                <div className="ttl">
+                  Monografia Devičany<span>Kategória monografia</span>
+                </div>
+                <div className="medal">Čestné uznanie</div>
               </div>
-              <h3 className="text-xl font-bold text-blue-900 dark:text-gray-100 mb-4 transition-colors">Výroba web-stránok</h3>
-              <p className="text-gray-600 dark:text-gray-400 flex-grow transition-colors">
-                Web-stránka je častokrát zdrojom prvotnej informácie. Jej dizajn by mal byť čo najlepší. Pripravíme aj crossmedia publishing pre krížové publikovanie.
-              </p>
-            </div>
-
-            {/* Service 5 */}
-            <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-md p-8 card-hover flex flex-col h-full border border-yellow-100 dark:border-gray-700 hover:border-yellow-400 dark:hover:border-yellow-400 transition-colors md:col-span-2 lg:col-span-2">
-              <div className="w-16 h-16 bg-blue-100 dark:bg-gray-700 text-blue-700 dark:text-blue-400 rounded-2xl flex items-center justify-center mb-6 shadow-inner transition-colors">
-                <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v13m0-13V6a2 2 0 112 2h-2zm0 0V5.5A2.5 2.5 0 109.5 8H12zm-7 4h14M5 12a2 2 0 110-4h14a2 2 0 110 4M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"></path></svg>
+              <div className="award rv">
+                <div className="yr">Najkrajšia kniha</div>
+                <div className="ttl">
+                  Tu spočíva kvet, čo zanechal svet<span>Propagačný materiál</span>
+                </div>
+                <div className="medal">3. miesto</div>
               </div>
-              <h3 className="text-xl font-bold text-blue-900 dark:text-gray-100 mb-4 transition-colors">Doplnkové reklamné služby</h3>
-              <p className="text-gray-600 dark:text-gray-400 flex-grow transition-colors">
-                Reklamné predmety, textil, potlač, gravírovanie, puzzle, magnetky, záložky, bannery, informačné tabule či polep vozidiel patria do nášho portfólia.
-              </p>
+              <div className="award rv">
+                <div className="yr">Najkrajší kalendár SR</div>
+                <div className="ttl">
+                  Čarokrásna Záhrada Eden<span>Kategória Obce — nástenný</span>
+                </div>
+                <div className="medal">3. miesto</div>
+              </div>
             </div>
           </div>
-        </div>
-      </section>
+        </section>
 
-      {/* NAŠA PONUKA Section */}
-      <section id="ponuka" className="py-24 bg-white dark:bg-gray-900 transition-colors">
-        <div className="container mx-auto px-4 md:px-6">
-          <SectionHeading title="Naša Ponuka" subtitle="Na trhu je veľa ponúk, ... ale my vám ju šijeme na mieru!" />
-          
-          <div className="mb-16 overflow-hidden rounded-3xl shadow-xl border-2 border-yellow-400/20 max-w-5xl mx-auto">
-            <img src="/images/sections/03_our_offer.png" alt="Naša Ponuka" className="w-full h-64 md:h-96 object-cover image-zoom-hover" loading="lazy" />
-          </div>
-
-          <div className="max-w-4xl mx-auto mb-16 text-center text-gray-600 dark:text-gray-400 text-lg transition-colors">
-            <p className="mb-4">
-              Samotný grafický návrh nie je všetko. Až jeho profesionálna technická realizácia je zárukou úspešného konečného výsledku.
-            </p>
-            <p>
-              Vytvárame rôzne tlačoviny – od tých najjednoduchších až po tie najzložitejšie, ktoré si vyžadujú knihárske spracovanie, laminovanie, parciálne lakovanie či výsek.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            <div className="bg-blue-50/50 dark:bg-gray-800 rounded-2xl p-8 border border-blue-100 dark:border-gray-700 transition-colors">
-              <h3 className="text-xl font-bold text-blue-900 dark:text-blue-400 mb-6 flex items-center transition-colors">
-                <span className="w-8 h-8 rounded-full bg-yellow-400 text-blue-900 flex items-center justify-center mr-3 text-sm font-bold">1</span>
-                Firemné tlačoviny
-              </h3>
-              <ul className="space-y-3 dark:text-gray-300 transition-colors">
-                <li className="flex"><CheckIcon /> Vizitky, hlavičkové papiere, pozvánky, obálky</li>
-                <li className="flex"><CheckIcon /> Produktové a užívateľské manuály, servisné knižky (aj samoprepis)</li>
-                <li className="flex"><CheckIcon /> Poznámkové bloky, diáre</li>
-                <li className="flex"><CheckIcon /> Letáky, plagáty</li>
-                <li className="flex"><CheckIcon /> Skladačky, spisové obaly (foldre)</li>
-                <li className="flex"><CheckIcon /> Produktové katalógy</li>
-                <li className="flex"><CheckIcon /> Zakladače</li>
-                <li className="flex"><CheckIcon /> Kalendáre – s Vašimi fotkami</li>
-                <li className="flex"><CheckIcon /> Firemné profily, Výročné správy</li>
+        {/* ÚČTOVNÍCTVO */}
+        <section className="pad" id="accounting" data-screen-label="Účtovníctvo">
+          <div className="wrap acc-grid">
+            <div className="acc rv">
+              <div className="eyebrow">Účtovníctvo</div>
+              <h2 style={{ fontSize: 'clamp(30px,3.6vw,48px)', margin: '14px 0 0' }}>
+                Vy viete, čo potrebujete,
+                <br />
+                <span className="grad" style={{ fontSize: '.82em' }}>
+                  … my vieme, ako na to!
+                </span>
+              </h2>
+              <p className="quiet" style={{ marginTop: '22px' }}>
+                Vedenie jednoduchého aj podvojného účtovníctva pre živnostníkov a malé s.r.o.
+              </p>
+              <ul>
+                <li>Vedenie účtovných kníh, denníka a analytických evidencií</li>
+                <li>Daňové priznania — daň z príjmov FO a PO, DPH, motorové vozidlá a nehnuteľnosti</li>
+                <li>Pravidelný prehľad o ekonomickom stave vašej firmy</li>
               </ul>
+              <a href="#contact" className="btn btn-primary">
+                Dohodnite si stretnutie <span className="arr">→</span>
+              </a>
+              <p className="note">Prvá konzultácia je bezplatná.</p>
             </div>
-
-            <div className="bg-blue-50/50 dark:bg-gray-800 rounded-2xl p-8 border border-blue-100 dark:border-gray-700 transition-colors">
-              <h3 className="text-xl font-bold text-blue-900 dark:text-blue-400 mb-6 flex items-center transition-colors">
-                <span className="w-8 h-8 rounded-full bg-yellow-400 text-blue-900 flex items-center justify-center mr-3 text-sm font-bold">2</span>
-                Tlačoviny pre inštitúcie
-              </h3>
-              <ul className="space-y-3 mb-8 dark:text-gray-300 transition-colors">
-                <li className="flex"><CheckIcon /> Brožúry</li>
-                <li className="flex"><CheckIcon /> Skriptá</li>
-                <li className="flex"><CheckIcon /> Knihy</li>
-                <li className="flex"><CheckIcon /> Noviny, časopisy</li>
-                <li className="flex"><CheckIcon /> Puzzle</li>
-              </ul>
-            </div>
-
-            <div className="bg-blue-50/50 dark:bg-gray-800 rounded-2xl p-8 border border-blue-100 dark:border-gray-700 transition-colors">
-              <h3 className="text-xl font-bold text-blue-900 dark:text-blue-400 mb-6 flex items-center transition-colors">
-                <span className="w-8 h-8 rounded-full bg-yellow-400 text-blue-900 flex items-center justify-center mr-3 text-sm font-bold">3</span>
-                Tlačoviny pre obce a mestá
-              </h3>
-              <ul className="space-y-3 dark:text-gray-300 transition-colors">
-                <li className="flex"><CheckIcon /> Pohľadnice</li>
-                <li className="flex"><CheckIcon /> Skladačky</li>
-                <li className="flex"><CheckIcon /> Turistický sprievodcovia, mapy</li>
-                <li className="flex"><CheckIcon /> Kalendáre – s Vašimi fotkami</li>
-                <li className="flex"><CheckIcon /> Monografie</li>
-                <li className="flex"><CheckIcon /> Noviny</li>
-                <li className="flex"><CheckIcon /> Bannery, Informačné tabule</li>
-              </ul>
-            </div>
-          </div>
-          
-          {/* Awards */}
-          <div className="mt-16 bg-blue-800 dark:bg-blue-900 text-white rounded-3xl p-8 md:p-12 shadow-2xl relative overflow-hidden border-t-4 border-yellow-400 transition-colors">
-            <div className="absolute top-0 right-0 opacity-10">
-              <img src="/images/idea-web.png" alt="Idea Decoration" className="w-64 h-64 object-contain" loading="lazy" />
-            </div>
-            <div className="relative z-10">
-              <h3 className="text-2xl md:text-3xl font-bold mb-8 flex items-center text-yellow-400">
-                <svg className="w-8 h-8 text-yellow-400 mr-4" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"></path></svg>
-                Naše Ocenenia
-              </h3>
-              <ul className="space-y-4 text-white/90">
-                <li className="bg-white/10 rounded-lg p-4 border-l-4 border-yellow-400"><strong>Monografia Žemberovce</strong> – hlavná cena v súťaži Slovenská kronika</li>
-                <li className="bg-white/10 rounded-lg p-4 border-l-4 border-yellow-400"><strong>Chotár pod Čiernym Kameňom</strong> – 1. miesto Najkrajšia kniha a propagačný materiál a 2. miesto Najkrajší kalendár Slovenska</li>
-                <li className="bg-white/10 rounded-lg p-4 border-l-4 border-yellow-400"><strong>Monografia Devičany</strong> – čestné uznanie v súťaži Slovenská kronika</li>
-                <li className="bg-white/10 rounded-lg p-4 border-l-4 border-yellow-400"><strong>Tu spočíva kvet...</strong> – 3. miesto v súťaži Najkrajšia kniha a propagačný materiál</li>
-                <li className="bg-white/10 rounded-lg p-4 border-l-4 border-yellow-400"><strong>Čarokrásna Záhrada Eden</strong> – 3. miesto Najkrajší kalendár Slovenska</li>
-              </ul>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* ÚČTOVNÍCTVO Section */}
-      <section id="uctovnictvo" className="py-24 bg-blue-50/30 dark:bg-gray-800/50 border-t border-gray-100 dark:border-gray-800 transition-colors">
-        <div className="container mx-auto px-4 md:px-6">
-          <div className="flex flex-col-reverse lg:flex-row items-center gap-12">
-            <div className="lg:w-1/2">
-              <SectionHeading title="Účtovníctvo" subtitle="Vy viete, čo potrebujete, ... my vieme, ako na to!" />
-              <p className="text-gray-600 dark:text-gray-400 mb-6 leading-relaxed text-lg transition-colors">
-                Vedenie jednoduchého aj podvojného účtovníctva pre živnostníkov a malé spoločnosti s ručením obmedzeným.
-              </p>
-              <ul className="space-y-4 mb-8 text-gray-700 dark:text-gray-300 transition-colors">
-                <li className="flex items-start"><CheckIcon /> <span>Vedenie účtovných kníh, účtovného denníka a analytických evidencií.</span></li>
-                <li className="flex items-start"><CheckIcon /> <span>Vypracovanie daňových priznaní k dani z príjmov fyzických a právnických osôb, DPH, motorových vozidiel a nehnuteľností.</span></li>
-                <li className="flex items-start"><CheckIcon /> <span>Vďaka pravidelnému informovaniu máte vždy prehľad o ekonomickom stave svojej firmy.</span></li>
-              </ul>
-              <div className="inline-block bg-yellow-400 text-blue-900 font-bold py-3 px-6 rounded-lg shadow-md hover:bg-yellow-500 transition-colors">
-                Dohodnite si stretnutie, prvá konzultácia je bezplatná.
-              </div>
-            </div>
-            <div className="lg:w-1/2">
-              <div className="overflow-hidden rounded-2xl shadow-xl relative group border-4 border-blue-900/10 dark:border-gray-700 transition-colors">
-                <img 
-                  src="/images/graphs-web.jpg" 
-                  alt="Účtovníctvo" 
-                  className="w-full h-auto image-zoom-hover"
-                  loading="lazy"
+            <div className="rv d1">
+              <div className="bleed fade" data-parallax="0.1">
+                <img
+                  src="/images/hammer-money-web.jpg"
+                  alt="Kladivko a kresba mincí — financie"
+                  style={{ aspectRatio: '3/2' }}
                 />
-                <div className="gallery-overlay">
-                  <span className="bg-yellow-400 text-blue-900 font-bold py-2 px-6 rounded-full shadow-lg transform -translate-y-4 group-hover:translate-y-0 transition-all duration-300">Presné Výsledky</span>
-                </div>
               </div>
             </div>
           </div>
-        </div>
-      </section>
+        </section>
 
-      {/* KONTAKT Section */}
-      <section id="kontakt" className="py-24 bg-white dark:bg-gray-900 transition-colors">
-        <div className="container mx-auto px-4 md:px-6 text-center">
-          <SectionHeading title="Kontakt" subtitle="Dohodnite si stretnutie, ... za opýtanie nič nedáte :)" />
-          
-          <div className="mb-16 overflow-hidden rounded-3xl shadow-xl border-2 border-yellow-400/20 max-w-5xl mx-auto">
-            <img src="/images/sections/05_contact.png" alt="Kontakt" className="w-full h-64 md:h-96 object-cover image-zoom-hover" loading="lazy" />
-          </div>
-
-          <div className="max-w-2xl mx-auto bg-white dark:bg-gray-800 rounded-3xl shadow-2xl p-10 border-t-4 border-yellow-400 transition-colors">
-            <h3 className="text-2xl font-bold text-blue-900 dark:text-blue-400 mb-8 transition-colors">Spojte sa s nami</h3>
-            
-            <div className="flex flex-col md:flex-row justify-center items-center gap-8 md:gap-16">
-              <div className="flex flex-col items-center">
-                <div className="w-16 h-16 bg-blue-50 dark:bg-gray-700 text-yellow-500 rounded-full flex items-center justify-center mb-4 shadow-inner transition-colors">
-                  <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
+        {/* KONTAKT */}
+        <section className="pad contact-band" id="contact" data-screen-label="Kontakt">
+          <div className="wrap">
+            <div className="sec-head center rv">
+              <div className="eyebrow">Kontakt</div>
+              <h2>Dohodnite si stretnutie</h2>
+              <div className="sub">„… za opýtanie nič nedáte :)“</div>
+            </div>
+            <div className="contact-card rv d1">
+              <div className="coffee-pane">
+                <img src="/images/coffee-wide-web.jpg" alt="Ruka držiaca kresbu šálky kávy s parou" />
+                <div className="steam">
+                  <span></span>
+                  <span></span>
+                  <span></span>
+                  <span></span>
                 </div>
-                <h4 className="font-bold text-blue-900 dark:text-gray-100 mb-1 transition-colors">Email</h4>
-                <a href="mailto:info@euroart-placeholder.sk" className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 hover:underline transition-colors">info@euroart-placeholder.sk</a>
               </div>
-              
-              <div className="flex flex-col items-center">
-                <div className="w-16 h-16 bg-blue-50 dark:bg-gray-700 text-yellow-500 rounded-full flex items-center justify-center mb-4 shadow-inner transition-colors">
-                  <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"></path></svg>
+              <div className="contact-info">
+                <div className="eyebrow">Spojte sa s nami</div>
+                <h3>Pri dobrej káve to ide ľahšie</h3>
+                <div className="cline">
+                  <div className="ci">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7">
+                      <rect x="2" y="4" width="20" height="16" rx="2" />
+                      <path d="M22 7l-10 6L2 7" />
+                    </svg>
+                  </div>
+                  <div>
+                    <div className="lbl">E-mail</div>
+                    <div className="val">info@euroart.sk</div>
+                  </div>
                 </div>
-                <h4 className="font-bold text-blue-900 dark:text-gray-100 mb-1 transition-colors">Telefón</h4>
-                <a href="tel:+421900000000" className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 hover:underline transition-colors">+421 900 000 000</a>
+                <div className="cline">
+                  <div className="ci">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7">
+                      <path d="M22 16.92v3a2 2 0 01-2.18 2 19.8 19.8 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.8 19.8 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72c.13.96.36 1.9.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.9.34 1.85.57 2.81.7A2 2 0 0122 16.92z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <div className="lbl">Telefón</div>
+                    <div className="val">+421 900 000 000</div>
+                  </div>
+                </div>
+                <p className="note">* Kontaktné údaje sú momentálne ilustračné.</p>
               </div>
             </div>
-            
-            <div className="mt-12 text-sm text-gray-500 dark:text-gray-400 transition-colors">
-              * Kontaktné údaje sú momentálne ilustračné.
-            </div>
           </div>
-        </div>
-      </section>
+        </section>
+      </main>
 
-      {/* Footer */}
-      <footer className="bg-blue-950 dark:bg-gray-950 text-white py-12 transition-colors">
-        <div className="container mx-auto px-4 md:px-6 text-center">
-          <div className="flex justify-center mb-6">
-            <div className="bg-white/90 p-2 rounded-xl inline-block">
-              <img src="/images/logo/logo.svg" alt="Euro-Art Logo" className="h-12 w-auto" />
-            </div>
-          </div>
-          <p className="text-blue-200 dark:text-gray-400 mb-6 transition-colors">
-            Reklamná agentúra & Účtovníctvo <br/>
-            Skúsenosti a originálne riešenia od roku 1997.
-          </p>
-          <div className="text-sm text-blue-400/50 dark:text-gray-600 border-t border-blue-900 dark:border-gray-800 pt-8 transition-colors">
-            &copy; {new Date().getFullYear()} Euro-Art. Všetky práva vyhradené.
-          </div>
+      <footer data-screen-label="Footer">
+        <div className="wrap">
+          <a href="#top" className="logo" style={{ fontSize: '28px' }}>
+            <span>EURO</span>
+            <span className="a">ART</span>
+          </a>
+          <p>Reklamná agentúra &amp; účtovníctvo · originálne riešenia od roku 1997</p>
+          <div className="fne">© {year} EUROART. Všetky práva vyhradené. · Návrh dizajnu — verzia „Studio“</div>
         </div>
       </footer>
-    </div>
+    </>
   );
 }
 

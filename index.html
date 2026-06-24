@@ -10,8 +10,15 @@
     <meta property="og:description" content="Komplexné služby, originálne riešenia. Zameriavame sa na grafický dizajn, redakčné práce, fotografiu a tlač." />
     <meta property="og:type" content="website" />
     <meta property="og:image" content="/images/globe-wide-web.jpg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   </head>
   <body>
+    <script>
+      /* Apply persisted theme before paint to avoid a flash of the wrong theme. */
+      try { if (localStorage.getItem('ea-theme') === 'light') document.body.classList.add('light'); } catch (e) {}
+    </script>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

@@ -12,6 +12,9 @@ dist
 dist-ssr
 *.local
 
+# Local design archive from Claude Design (large, not source-controlled)
+redesign.zip
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
